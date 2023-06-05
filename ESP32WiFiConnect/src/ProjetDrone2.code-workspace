@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "../../../../../Desktop/ProjetDrone/ProjetDrone2"
+		},
+		{
+			"name": "ESP32WiFiConnect",
+			"path": ".."
+		},
+		{
+			"name": "Drone instrumente",
+			"path": "F:/projet_MECSE/Drone instrumente"
+		}
+	],
+	"settings": {}
+}
