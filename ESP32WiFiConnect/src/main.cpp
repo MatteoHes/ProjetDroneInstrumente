@@ -184,6 +184,7 @@ void loop() {
   copies or substantial portions of the Software.
 */
 
+
 // Import required libraries
 #include "WiFi.h"
 #include "ESPAsyncWebServer.h"
@@ -198,10 +199,16 @@ void loop() {
 #include <DHT.h>
 #include <DHT_U.h>
 
+//lib pour l'altitude
+#include <SPI.h>
+#include <Adafruit_BMP280.h>
+
+
+
 #define RXD0 16
 #define TXD0 17
 
-#define DHTPIN 2
+#define DHTPIN 33
 #define DHTTYPE DHT11
 
 HardwareSerial SerialPort(2);
@@ -213,12 +220,9 @@ DHT_Unified dht(DHTPIN, DHTTYPE);
 const char* ssid = "ESP32-Access-Point";
 const char* password = "123456789";
 int test=0,test2=100,test3=200, test4=300,test5=400;
-String temperatureHes,humidityHes,latitudeHes;
-/*#include <SPI.h>
-#define BME_SCK 18
-#define BME_MISO 19
-#define BME_MOSI 23
-#define BME_CS 5*/
+String temperatureHes,humidityHes,latitudeHes,longitudeHes, altitudeHes, volumeHes;
+Adafruit_BMP280 Altimeter;
+
 //Adafruit_BME280 bme(BME_CS); // hardware SPI
 //Adafruit_BME280 bme(BME_CS, BME_MOSI, BME_MISO, BME_SCK); // software SPI
 
@@ -229,12 +233,12 @@ String tester() {
   return String(test);
   //return String(1.8 * bme.readTemperature() + 32);
 }
-String tester2() {
-  return String(test2);
+String altitudeHesString() {
+  return String(altitudeHes);
   //return String(1.8 * bme.readTemperature() + 32);
 }
-String tester3() {
-  return String(test3);
+String longitudeHesString() {
+  return String(longitudeHes);
   //return String(1.8 * bme.readTemperature() + 32);
 }
 String latitudeHesString() {
@@ -249,13 +253,32 @@ String temperatureHesString() {
   return String(temperatureHes);
   //return String(1.8 * bme.readTemperature() + 32);
 }
+String volumeHesString() {
+  return String(volumeHes);
+  //return String(1.8 * bme.readTemperature() + 32);
+}
 
+
+float convert_latitude_longitude(String to_convert){ 
+    //conversion du string en tableau de char  
+    char* coordinate = new char[to_convert.length()];
+    strcpy(coordinate, to_convert.c_str());
+    //conversion de tableau de char en float
+    float flt_coordinate = atof(coordinate);
+
+    int firstdigits = ((int)flt_coordinate)/100;
+    float lastdigits = flt_coordinate - (float)(firstdigits*100);
+    float converted = ((float)(firstdigits + lastdigits/60.00));
+    return converted;
+}
 
 void setup(){
   // Serial port for debugging purposes
-  Serial.begin(921600);
+  Serial.begin(115200);
   Serial.println("test");
     SerialPort.begin(9600, SERIAL_8N1, RXD0, TXD0);
+ 
+  Altimeter.begin();
 
     dht.begin();
 
@@ -267,19 +290,16 @@ void setup(){
   IPAddress IP = WiFi.softAPIP();
   Serial.print("AP IP address: ");
   Serial.println(IP);
-  // default settings
-  // (you can also pass in a Wire library object like &Wire2)  if (!status) {
-  // Start server
   
   server.begin();
       server.on("/test", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/plain",tester().c_str());
   });
-      server.on("/test2", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send_P(200, "text/plain",tester2().c_str());
+      server.on("/altitude", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/plain",altitudeHesString().c_str());
   });
-      server.on("/test3", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send_P(200, "text/plain",tester3().c_str());
+      server.on("/longitude", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/plain",longitudeHesString().c_str());
   });
       server.on("/latitude", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/plain",latitudeHesString().c_str());
@@ -290,6 +310,17 @@ void setup(){
         server.on("/temperature", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/plain",temperatureHesString().c_str());
   });
+          server.on("/volume", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/plain",volumeHesString().c_str());
+  });
+}
+
+float altitude (){
+  Serial.print("Atitude barométrique :");
+  float alt;
+  alt = Altimeter.readAltitude(1015);
+  Serial.print(alt);
+  return alt;
 }
 
 void temperature_humidity_read(){
@@ -354,8 +385,11 @@ void gps_read(){
     Latitude = gps_data;
     Latitude.remove(Pos, 80);
     gps_data.remove(0, Pos+1);
-    Serial.print("Latitude: " + Latitude + " ");
-    latitudeHes=Latitude;
+    Serial.print("Latitude: ");
+    Serial.println(convert_latitude_longitude(Latitude), 6);
+    Serial.print(" ");
+    latitudeHes= convert_latitude_longitude(Latitude);
+
     //Latitude Nord ou Sud
     Pos = gps_data.indexOf(',');
     Latitude_NS = gps_data.charAt(Pos-1);
@@ -368,7 +402,10 @@ void gps_read(){
     Longitude = gps_data;
     Longitude.remove(Pos, 80);
     gps_data.remove(0, Pos+1);
-    Serial.print("Longitude: " + Longitude + " ");
+    Serial.print("Longitude: ");
+    Serial.println(convert_latitude_longitude(Longitude), 6);
+    Serial.print(" ");
+    longitudeHes=convert_latitude_longitude(Longitude);
 
     //Longitude Ouest ou Est
     Pos = gps_data.indexOf(',');
@@ -389,6 +426,104 @@ void gps_read(){
     
     Serial.print("Altitude: " + Altitude + " m");
     Serial.print("\n");
+    altitudeHes=Altitude;
+  }
+}
+
+int volume (){
+  int val;
+  for (int i = 0; i < 200; i++)
+  {
+    if(val<analogRead(32))val = analogRead(32);
+  }
+  return val;
+}
+
+void loop(){
+test=test+1;
+temperature_humidity_read();
+gps_read();
+altitudeHes=altitude ();
+
+volumeHes=volume();
+
+Serial.print(volumeHes);
+
+delay(1000);
+
+}
+
+
+/*
+void gps_read(){
+
+  
+  String gps_data;
+  String gps_time;
+  String Latitude;
+  char Latitude_NS;
+  String Longitude;
+  char Longitude_WE; 
+  String Altitude;
+
+  gps_data = SerialPort.readStringUntil(13);
+  gps_data.trim();
+  if (gps_data.startsWith("$GPGGA")){
+    //Serial.print("raw:" + gps_data + "\n");
+
+    int Pos = gps_data.indexOf(',');
+    gps_data.remove(0,Pos+1);
+    Serial.print("Data:" + gps_data + "\n\n");
+
+    //Heure UTC
+    Pos = gps_data.indexOf(',');
+    gps_time = gps_data;
+    gps_time.remove(Pos, 80);
+    gps_data.remove(0, Pos+1);
+    Serial.print("Heure UTC: " + gps_time + "\n");
+
+    //Latitude
+    Pos = gps_data.indexOf(',');
+    Latitude = gps_data;
+    Latitude.remove(Pos, 80);
+    gps_data.remove(0, Pos+1);
+    Serial.print("Latitude: " + Latitude + " ");
+    latitudeHes=Latitude;
+    //Latitude Nord ou Sud
+    Pos = gps_data.indexOf(',');
+    Latitude_NS = gps_data.charAt(Pos-1);
+    gps_data.remove(0, Pos+1);
+    Serial.print(Latitude_NS);
+    Serial.print("\n");
+
+    //Longitude
+    Pos = gps_data.indexOf(',');
+    Longitude = gps_data;
+    Longitude.remove(Pos, 80);
+    gps_data.remove(0, Pos+1);
+    Serial.print("Longitude: " + Longitude + " ");
+    longitudeHes=Longitude;
+
+    //Longitude Ouest ou Est
+    Pos = gps_data.indexOf(',');
+    Longitude_WE = gps_data.charAt(Pos-1);
+    gps_data.remove(0, Pos+1);
+    Serial.print(Longitude_WE);
+    Serial.print("\n");
+
+    //Altitude 
+    Pos = gps_data.indexOf(',');
+    gps_data.remove(0, Pos+1);
+    Pos = gps_data.indexOf(',');
+    gps_data.remove(0, Pos+1);
+    Pos = gps_data.indexOf(',');
+    gps_data.remove(0, Pos+1);
+    Altitude = gps_data;
+    Altitude.remove(Pos, 80);
+    
+    Serial.print("Altitude: " + Altitude + " m");
+    Serial.print("\n");
+    altitudeHes=Altitude;
 
     
     //traitement des coordonnées
@@ -413,18 +548,239 @@ void gps_read(){
     //Latitude = to_string(firstdigits) + ".";
     Serial.print("la nouvelle latitude est: "+Latitude);
     Serial.print("\n");
+  }
+}
+*/
 
+/*
+#include "WiFi.h"
+#include "ESPAsyncWebServer.h"
+
+#include <Arduino.h>
+#include <Wire.h>
+#include <HardwareSerial.h>
+#include <iostream>
+#include <string>
+#include <WiFiAP.h>
+//#include <WebServer.h>
+
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <DHT_U.h>
+
+#define RXD0 16
+#define TXD0 17
+
+#define DHTPIN 2
+#define DHTTYPE DHT11
+
+HardwareSerial SerialPort(2);
+DHT_Unified dht(DHTPIN, DHTTYPE);
+
+// Set your access point network credentials
+const char* ssid = "ESP32-Access-Point";
+const char* password = "123456789";
+int test = 0, test2 = 100, test3 = 200, test4 = 300, test5 = 400;
+String temperatureHes, humidityHes, latitudeHes, longitudeHes, altitudeHes;
+
+// Create AsyncWebServer object on port 80
+AsyncWebServer server(80);
+
+String tester() {
+  return String(test);
+}
+
+String altitudeHesString() {
+  return String(altitudeHes);
+}
+
+String longitudeHesString() {
+  return String(longitudeHes);
+}
+
+String latitudeHesString() {
+  return String(latitudeHes);
+}
+
+String humidityHesString() {
+  return String(humidityHes);
+}
+
+String temperatureHesString() {
+  return String(temperatureHes);
+}
+
+float convert_latitude_longitude(String to_convert) {
+  //conversion du string en tableau de char
+  char* coordinate = new char[to_convert.length()];
+  strcpy(coordinate, to_convert.c_str());
+  //conversion de tableau de char en float
+  float flt_coordinate = atof(coordinate);
+
+  int firstdigits = ((int)flt_coordinate) / 100;
+  float lastdigits = flt_coordinate - (float)(firstdigits * 100);
+  float converted = ((float)(firstdigits + lastdigits / 60.00));
+  return converted;
+}
+
+void setup() {
+  // Serial port for debugging purposes
+  Serial.begin(921600);
+  Serial.println("test");
+  SerialPort.begin(9600, SERIAL_8N1, RXD0, TXD0);
+  dht.begin();
+
+  // Connect to Wi-Fi network
+  WiFi.begin("pcmatteo", "1234567890");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+
+  // Print ESP32 IP address after successful connection
+  Serial.print("Connected to WiFi. IP address: ");
+  Serial.println(WiFi.localIP());
+
+  // Setting the ESP as an access point
+  Serial.print("Setting AP (Access Point)...");
+  // Remove the password parameter if you want the AP to be open
+  WiFi.softAP(ssid, password);
+
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+
+  server.begin();
+  server.on("/test", HTTP_GET, [](AsyncWebServerRequest* request) {
+    request->send_P(200, "text/plain", tester().c_str());
+  });
+  server.on("/altitude", HTTP_GET, [](AsyncWebServerRequest* request) {
+    request->send_P(200, "text/plain", altitudeHesString().c_str());
+  });
+  server.on("/longitude", HTTP_GET, [](AsyncWebServerRequest* request) {
+    request->send_P(200, "text/plain", longitudeHesString().c_str());
+    });
+    server.on("/latitude", HTTP_GET, [](AsyncWebServerRequest* request) {
+      request->send_P(200, "text/plain", latitudeHesString().c_str());
+    });
+    server.on("/humidity", HTTP_GET, [](AsyncWebServerRequest* request) {
+      request->send_P(200, "text/plain", humidityHesString().c_str());
+    });
+    server.on("/temperature", HTTP_GET, [](AsyncWebServerRequest* request) {
+      request->send_P(200, "text/plain", temperatureHesString().c_str());
+    });
+}
+
+void temperature_humidity_read() {
+
+  uint32_t delayMS;
+  sensor_t sensor;
+  delayMS = sensor.min_delay / 500;
+  //delay(delayMS);
+
+  sensors_event_t event;
+  dht.temperature().getEvent(&event);
+  if (isnan(event.temperature)) {
+    Serial.println(F("Error reading temperature!"));
+  }
+  else {
+    Serial.print(F("Temperature: "));
+    Serial.print(event.temperature);
+    Serial.println(F("°C"));
+    temperatureHes = String(event.temperature);
+  }
+
+  dht.humidity().getEvent(&event);
+  if (isnan(event.relative_humidity)) {
+    Serial.println(F("Error reading humidity!"));
+  }
+  else {
+    Serial.print(F("Humidity: "));
+    Serial.print(event.relative_humidity);
+    Serial.println(F("%"));
+    humidityHes = String(event.relative_humidity);
   }
 }
 
-void loop(){
-test=test+1;
-test2+=1;
-test3+=1;
-test4+=1;
-test5+=1;
-temperature_humidity_read();
-gps_read();
+void gps_read() {
 
-delay(1000);
+  String gps_data;
+  String gps_time;
+  String Latitude;
+  char Latitude_NS;
+  String Longitude;
+  char Longitude_WE;
+  String Altitude;
+
+  gps_data = SerialPort.readStringUntil(13);
+  gps_data.trim();
+  if (gps_data.startsWith("$GPGGA")) {
+    //Serial.print("raw:" + gps_data + "\n");
+
+    int Pos = gps_data.indexOf(',');
+    gps_data.remove(0, Pos + 1);
+    Serial.print("Data:" + gps_data + "\n\n");
+
+    //Heure UTC
+    Pos = gps_data.indexOf(',');
+    gps_time = gps_data;
+    gps_time.remove(Pos, 80);
+    gps_data.remove(0, Pos + 1);
+    Serial.print("Heure UTC: " + gps_time + "\n");
+
+    //Latitude
+    Pos = gps_data.indexOf(',');
+    Latitude = gps_data;
+    Latitude.remove(Pos, 80);
+    gps_data.remove(0, Pos + 1);
+    Serial.print("Latitude: ");
+    Serial.println(convert_latitude_longitude(Latitude), 6);
+    Serial.print(" ");
+    latitudeHes = String(convert_latitude_longitude(Latitude));
+
+    //Latitude Nord ou Sud
+    Pos = gps_data.indexOf(',');
+    Latitude_NS = gps_data.charAt(Pos - 1);
+    gps_data.remove(0, Pos + 1);
+    Serial.print(Latitude_NS);
+    Serial.print("\n");
+
+    //Longitude
+    Pos = gps_data.indexOf(',');
+    Longitude = gps_data;
+    Longitude.remove(Pos, 80);
+    gps_data.remove(0, Pos + 1);
+    Serial.print("Longitude: ");
+    Serial.println(convert_latitude_longitude(Longitude), 6);
+    Serial.print(" ");
+    longitudeHes = String(convert_latitude_longitude(Longitude));
+
+    //Longitude Ouest ou Est
+    Pos = gps_data.indexOf(',');
+    Longitude_WE = gps_data.charAt(Pos - 1);
+    gps_data.remove(0, Pos + 1);
+    Serial.print(Longitude_WE);
+    Serial.print("\n");
+
+    //Altitude 
+    Pos = gps_data.indexOf(',');
+    gps_data.remove(0, Pos + 1);
+    Pos = gps_data.indexOf(',');
+    Altitude = gps_data;
+    Altitude.remove(Pos, 80);
+    Serial.print("Altitude: ");
+    Serial.println(Altitude);
+    Serial.print(" ");
+    altitudeHes = String(Altitude);
+  }
 }
+
+void loop() {
+  //temperature_humidity_read();
+  //gps_read();
+  test+=1;
+  
+  delay(1000);
+}*/
+
+
